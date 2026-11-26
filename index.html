@@ -364,30 +364,29 @@ function fill(){
   }
 }
 function clearWordMark(){if(wordTimer){clearInterval(wordTimer);wordTimer=null}if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}}
-var wordSearchPage=-1,wordSearchEl=-1,wordSearchOffset=0;
-function resetWordSearch(page){wordSearchPage=page;wordSearchEl=-1;wordSearchOffset=0}
-function unwrapWordMark(){if(wordMark){var p=wordMark.parentNode;p.replaceChild(document.createTextNode(wordMark.textContent),wordMark);p.normalize();wordMark=null}}
 function markWord(w,page){
-  unwrapWordMark();if(!w)return;
-  var nodes=flow.querySelectorAll('p,h2');if(wordSearchPage!==page)resetWordSearch(page);
-  function findIn(el,start){
-    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node,base=0;
+  clearWordMark();
+  if(!w)return;
+  var nodes=flow.querySelectorAll('p,h2');
+  function search(el){
+    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node;
     while(node=walker.nextNode()){
-      var txt=node.nodeValue,begin=Math.max(0,start-base),idx=txt.toLocaleLowerCase().indexOf(w.toLocaleLowerCase(),begin);
+      var txt=node.nodeValue,needle=w.toLocaleLowerCase(),idx=txt.toLocaleLowerCase().indexOf(needle);
       while(idx>=0){
         var before=idx?txt.charAt(idx-1):'',after=txt.charAt(idx+w.length)||'';
         if(!/[\\p{L}\\p{N}]/u.test(before)&&!/[\\p{L}\\p{N}]/u.test(after)){
           var range=document.createRange();range.setStart(node,idx);range.setEnd(node,idx+w.length);
-          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);wordMark=span;wordSearchEl=Array.prototype.indexOf.call(nodes,el);wordSearchOffset=base+idx+w.length;return true;
+          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);wordMark=span;return true;
         }
-        idx=txt.toLocaleLowerCase().indexOf(w.toLocaleLowerCase(),idx+1)
+        idx=txt.toLocaleLowerCase().indexOf(needle,idx+1);
       }
-      base+=txt.length;
     }return false;
   }
-  var first=Math.max(0,wordSearchEl);
-  for(var i=first;i<nodes.length;i++){var r=nodes[i].getBoundingClientRect(),fr=flow.getBoundingClientRect();if(Math.floor((r.left-fr.left)/W)!==page)continue;if(findIn(nodes[i],i===first?wordSearchOffset:0))return}
-  for(var j=0;j<first;j++){var rr=nodes[j].getBoundingClientRect(),ff=flow.getBoundingClientRect();if(Math.floor((rr.left-ff.left)/W)!==page)continue;if(findIn(nodes[j],0))return}
+  for(var i=0;i<nodes.length;i++){
+    var r=nodes[i].getBoundingClientRect(),fr=flow.getBoundingClientRect();
+    if(Math.floor((r.left-fr.left)/W)!==page)continue;
+    if(search(nodes[i]))return;
+  }
 }
 function playBlob(blob,text){
   return new Promise(async function(res,rej){
@@ -461,7 +460,7 @@ function speakNext(){
 }
 /* ---------- k\u00f6z\u00f6s vez\u00e9rl\u00e9s ---------- */
 var clickStartEl=null,clickStartIndex=-1,clickStartOffset=0;
-flow.addEventListener('click',function(e){if(!loaded||playing)return;var target=e.target.closest('p,h2');if(!target)return;var range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;if(!range||!target.contains(range.startContainer))return;var tn=range.startContainer,off=range.startOffset;if(tn.nodeType!==3)return;var text=tn.nodeValue,lo=off,hi=off;while(lo>0&&/[\\p{L}\\p{N}]/u.test(text.charAt(lo-1)))lo--;while(hi<text.length&&/[\\p{L}\\p{N}]/u.test(text.charAt(hi)))hi++;if(lo===hi)return;var w=text.slice(lo,hi),walk=document.createTreeWalker(target,NodeFilter.SHOW_TEXT),n,pos=0,absolute=0;while(n=walk.nextNode()){if(n===tn){absolute=pos+lo;break}pos+=n.nodeValue.length}clickStartEl=target;clickStartIndex=Array.prototype.indexOf.call(flow.querySelectorAll('h2,p'),target);clickStartOffset=absolute;var rect=target.getBoundingClientRect(),fr=flow.getBoundingClientRect(),pg=Math.floor((rect.left-fr.left)/W);if(pg!==cur)go(pg);resetWordSearch(pg);startTTS();});
+flow.addEventListener('click',function(e){if(!loaded||playing)return;var target=e.target.closest('p,h2');if(!target)return;var range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;if(!range||!target.contains(range.startContainer)){range=document.createRange();range.selectNodeContents(target);range.collapse(true)}var tn=range.startContainer,off=range.startOffset;if(tn.nodeType!==3){var wkr=document.createTreeWalker(target,NodeFilter.SHOW_TEXT),first=wkr.nextNode();if(!first){return}tn=first;off=0}var text=tn.nodeValue,lo=Math.min(off,text.length),hi=lo;while(lo>0&&/[\\p{L}\\p{N}]/u.test(text.charAt(lo-1)))lo--;while(hi<text.length&&/[\\p{L}\\p{N}]/u.test(text.charAt(hi)))hi++;if(lo===hi){lo=off;while(lo<text.length&&!/[\\p{L}\\p{N}]/u.test(text.charAt(lo)))lo++;hi=lo;while(hi<text.length&&/[\\p{L}\\p{N}]/u.test(text.charAt(hi)))hi++;if(lo===hi)return}var walk=document.createTreeWalker(target,NodeFilter.SHOW_TEXT),n,pos=0,absolute=0;while(n=walk.nextNode()){if(n===tn){absolute=pos+lo;break}pos+=n.nodeValue.length}clickStartEl=target;clickStartIndex=Array.prototype.indexOf.call(flow.querySelectorAll('h2,p'),target);clickStartOffset=absolute;var rect=target.getBoundingClientRect(),fr=flow.getBoundingClientRect(),pg=Math.floor((rect.left-fr.left)/W);if(pg!==cur)go(pg);startTTS();});
 function startTTS(){
   if(!loaded)return;
   stopTTS();
