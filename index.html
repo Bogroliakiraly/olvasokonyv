@@ -215,7 +215,7 @@ function release(){
 view.addEventListener('pointerup',release);
 view.addEventListener('pointercancel',release);
 var tts=window.speechSynthesis,playing=false,paused=false,tok=0,mode='p',els=[],ei=0,chunks=[],ci=0,meta=null,rate=1,voice=null,hv=[],selfTurn=false,RATES=[.85,1,1.15,1.3];
-var HF='https://huggingface.co/diffusionstudio/piper-voices/resolve/main/hu/hu_HU/',PH='https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize',PHJS='https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js',ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+var HF='https://huggingface.co/rhasspy/piper-voices/resolve/main/hu/hu_HU/',PH='https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize',PHJS='https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js',ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
 var pv='anna',eng=null,phm=null,chain=Promise.resolve(),audioCtx=null,activeSource=null,queue=[],cursor=null,curC=null,curRes=null;
 try{rate=parseFloat(localStorage.getItem('rd-rate'))||1}catch(e){}
 $('rate').textContent=rate+'\u00d7';
