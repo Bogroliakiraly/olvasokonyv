@@ -349,8 +349,8 @@ async function playLoop(my){
     if(!playing||my!==tok)return;
     $('play').textContent='\u23f8';ui();
     fill();
-    if(c.p>cur&&!busy){selfTurn=true;go(c.p)}
     await playBlob(wav);
+    if(playing&&my===tok&&c.p>cur&&!busy){selfTurn=true;go(c.p)}
   }
 }
 /* ---------- az eszk\u00f6z saj\u00e1t hangja (tartal\u00e9k) ---------- */
