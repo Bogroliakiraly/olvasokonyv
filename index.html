@@ -392,7 +392,7 @@ function playBlob(blob){
       src.onended=function(){if(activeSource===src)activeSource=null;res()};src.start(0);
     }catch(e){activeSource=null;rej(e)}
   });
-}'
+}
 function playBlob(blob,text){
   return new Promise(async function(res,rej){
     try{
