@@ -66,7 +66,7 @@ h2::after{content:"❦";display:block;font-size:.6em;margin-top:.4em;color:var(-
 <div id="start">
 <h1>Könyvolvasó</h1>
 <p>Nyiss meg egy könyvet a telefonodról vagy gépedről, és lapozhatod, mint egy igazi könyvet. A fájl nem hagyja el az eszközödet.</p>
-<button class="btn" id="openBtn" type="button">Könyv megnyitása</button><input id="file" type="file" accept=".epub,.txt,.html,.htm" hidden><br><button class="btn" id="pasteBtn" type="button">Szöveg beillesztése</button><div id="pasteBox" hidden><textarea id="ta" rows="6" placeholder="Illeszd be ide a könyv szövegét…" style="width:100%;font:inherit;font-size:16px;background:var(--paper);color:var(--ink);border:1px solid var(--mute);border-radius:8px;padding:8px"></textarea><br><button class="btn" id="go0" type="button">Olvasás</button></div>
+<label class="btn filePick" id="openBtn">Könyv megnyitása<input id="file" type="file" accept=".epub,.txt,.html,.htm,application/epub+zip,text/plain,text/html"></label><br><button class="btn" id="pasteBtn" type="button">Szöveg beillesztése</button><div id="pasteBox" hidden><textarea id="ta" rows="6" placeholder="Illeszd be ide a könyv szövegét…" style="width:100%;font:inherit;font-size:16px;background:var(--paper);color:var(--ink);border:1px solid var(--mute);border-radius:8px;padding:8px"></textarea><br><button class="btn" id="go0" type="button">Olvasás</button></div>
 <p>Támogatott: <b>.epub</b>, .txt, .html. Rejtő Jenő regényei szabadon letölthetők a <a href="https://mek.oszk.hu" target="_blank" rel="noopener">Magyar Elektronikus Könyvtárból</a> (mek.oszk.hu), válaszd az EPUB változatot.</p>
 <p id="err" style="color:var(--acc)"></p>
 </div>
@@ -76,6 +76,7 @@ h2::after{content:"❦";display:block;font-size:.6em;margin-top:.4em;color:var(-
 <div id="leaf"><div class="face"><div id="lflow" class="flowc nc"></div><div class="fs" id="fsh"></div></div><div class="face back"></div></div>
 </div></div>
 <div class="ctl" id="ctl" hidden><button id="prev" aria-label="Előző oldal">‹</button><span id="pg"></span><span id="ttsStatus" aria-live="polite"></span><button id="next" aria-label="Következő oldal">›</button><button id="play" aria-label="Felolvasás">🎧</button><button id="fsb" aria-label="Teljes képernyő">⛶</button></div>
+<script>window.addEventListener("error",function(e){var box=document.getElementById("err");if(box)box.textContent="JavaScript hiba: "+(e.message||"ismeretlen hiba")+" ("+(e.lineno||"")+ ")";});</script>
 <script>
 var $=function(i){return document.getElementById(i)},flow=$('flow'),lflow=$('lflow'),view=$('view'),stage=$('stage'),shade=$('shade'),leaf=$('leaf'),fsh=$('fsh');
 var W=0,H=0,P=0,cur=0,total=1,fs=0,key='',chP=[],loaded=false,busy=false;
@@ -137,7 +138,7 @@ async function fromEpub(buf){
   }
   return {title:title,items:items};
 }
-$('openBtn').onclick=function(){ $('file').click(); };
+$('openBtn').onclick=null;
 $('file').onchange=async function(e){
   var f=e.target.files[0];if(!f)return;$('err').textContent='';
   try{
