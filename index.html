@@ -45,7 +45,7 @@ h2::after{content:"❦";display:block;font-size:.6em;margin-top:.4em;color:var(-
 @keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
 .ctl{display:flex;align-items:center;gap:12px;margin:10px 0 12px;color:var(--mute);font-size:15px}
 .ctl button{font-size:20px;padding:2px 14px;line-height:1.2}
-.ctl button:disabled{opacity:.25;cursor:default}
+.ctl button:disabled{opacity:.25;cursor:default}#ttsStatus{font:13px system-ui,sans-serif;color:var(--acc);max-width:45vw;overflow:hidden;text-overflow:ellipsis}
 #bar{position:fixed;left:0;top:0;height:3px;background:var(--acc);width:0;transition:width .6s ease}
 </style>
 </head>
@@ -63,7 +63,7 @@ h2::after{content:"❦";display:block;font-size:.6em;margin-top:.4em;color:var(-
 <div id="clip"><div id="flow" class="flowc"></div><div class="shade" id="shade"></div></div>
 <div id="leaf"><div class="face"><div id="lflow" class="flowc nc"></div><div class="fs" id="fsh"></div></div><div class="face back"></div></div>
 </div></div>
-<div class="ctl" id="ctl" hidden><button id="prev" aria-label="Előző oldal">‹</button><span id="pg"></span><button id="next" aria-label="Következő oldal">›</button><button id="play" aria-label="Felolvasás">🎧</button><button id="fsb" aria-label="Teljes képernyő">⛶</button></div>
+<div class="ctl" id="ctl" hidden><button id="prev" aria-label="Előző oldal">‹</button><span id="pg"></span><span id="ttsStatus" aria-live="polite"></span><button id="next" aria-label="Következő oldal">›</button><button id="play" aria-label="Felolvasás">🎧</button><button id="fsb" aria-label="Teljes képernyő">⛶</button></div>
 <script>
 var $=function(i){return document.getElementById(i)},flow=$('flow'),lflow=$('lflow'),view=$('view'),stage=$('stage'),shade=$('shade'),leaf=$('leaf'),fsh=$('fsh');
 var W=0,H=0,P=0,cur=0,total=1,fs=0,key='',chP=[],loaded=false,busy=false;
@@ -216,11 +216,11 @@ view.addEventListener('pointerup',release);
 view.addEventListener('pointercancel',release);
 var tts=window.speechSynthesis,playing=false,paused=false,tok=0,mode='p',els=[],ei=0,chunks=[],ci=0,meta=null,rate=1,voice=null,hv=[],selfTurn=false,RATES=[.85,1,1.15,1.3];
 var HF='https://huggingface.co/diffusionstudio/piper-voices/resolve/main/hu_HU/',PH='https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize',PHJS='https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js',ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
-var pv='anna',eng=null,phm=null,chain=Promise.resolve(),au=null,queue=[],cursor=null,curC=null,curRes=null,SIL='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=';
+var pv='anna',eng=null,phm=null,chain=Promise.resolve(),audioCtx=null,activeSource=null,queue=[],cursor=null,curC=null,curRes=null;
 try{rate=parseFloat(localStorage.getItem('rd-rate'))||1}catch(e){}
 $('rate').textContent=rate+'\u00d7';
-function status(m){$('pg').textContent=m}
-function note(m){status(m);setTimeout(ui,3500)}
+function status(m){$('ttsStatus').textContent=m||''}
+function note(m){status(m);setTimeout(function(){status('')},6000)}
 function usePiper(){return $('voice').value!=='d'}
 function loadVoices(){
   if(tts){
@@ -324,12 +324,14 @@ function fill(){
   }
 }
 function playBlob(blob){
-  return new Promise(function(res){
-    var u=URL.createObjectURL(blob);
-    curRes=function(){au.onended=null;au.onerror=null;curRes=null;URL.revokeObjectURL(u);res()};
-    au.onended=curRes;au.onerror=curRes;au.src=u;
-    var pr=au.play();
-    if(pr&&pr.catch)pr.catch(function(){stopTTS();note('Nyomd meg \u00fajra a \u25b6 gombot');if(curRes)curRes()});
+  return new Promise(async function(res,rej){
+    try{
+      if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state==='suspended')await audioCtx.resume();
+      var buf=await audioCtx.decodeAudioData(await blob.arrayBuffer());
+      var src=audioCtx.createBufferSource();src.buffer=buf;src.connect(audioCtx.destination);activeSource=src;
+      src.onended=function(){if(activeSource===src)activeSource=null;res()};src.start(0);
+    }catch(e){activeSource=null;rej(e)}
   });
 }
 async function playLoop(my){
@@ -342,10 +344,7 @@ async function playLoop(my){
     var wav;
     try{wav=await c.prom}catch(e){
       if(my!==tok)return;
-      console.warn(e);stopTTS();
-      if(hv.length){$('voice').value='d';note('A Piper hang nem indult, az eszk\u00f6z hangj\u00e1t haszn\u00e1lom');startTTS()}
-      else note('A Piper hang nem indult el');
-      return;
+      console.warn('Piper TTS error:',e);stopTTS();note('Piper hiba: '+(e&&e.message?e.message:'nem sikerült betölteni'));return;
     }
     if(!playing||my!==tok)return;
     $('play').textContent='\u23f8';ui();
@@ -400,20 +399,18 @@ function startTTS(){
 function stopTTS(){
   playing=false;paused=false;tok++;
   if(tts)tts.cancel();
-  if(au)try{au.pause()}catch(e){}
-  if(curRes)curRes();
+  if(activeSource)try{activeSource.stop()}catch(e){}activeSource=null;  if(curRes)curRes();
   queue=[];cursor=null;curC=null;
   $('play').textContent='\ud83c\udfa7';
 }
 function unlock(){
-  if(!au)au=new Audio();
-  try{au.src=SIL;var p=au.play();if(p&&p.catch)p.catch(function(){})}catch(e){}
+  try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){note('A böngésző nem engedélyezte a hangot')}
 }
 $('play').onclick=function(){
   unlock();
   if(playing){
     playing=false;paused=true;tok++;$('play').textContent='\u25b6';
-    if(mode==='p'){try{au.pause()}catch(e){}if(curC)queue.unshift(curC);if(curRes)curRes()}
+    if(mode==='p'){if(activeSource)try{activeSource.stop()}catch(e){}activeSource=null;if(curC)queue.unshift(curC);if(curRes)curRes()}
     else tts.cancel();
   }else if(paused){
     paused=false;playing=true;$('play').textContent='\u23f8';
