@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Könyvolvasó</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/ort.min.js"></script>
+<style>
+:root{--bg:#e9dfcc;--desk:#d8cbb0;--paper:#faf4e6;--ink:#2b2218;--mute:#8a7a62;--acc:#8c3b2a;--shadow:rgba(60,40,10,.35);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15110c;--desk:#1d1710;--paper:#26201a;--ink:#e6dcc8;--mute:#8f8369;--acc:#d08a6a;--shadow:rgba(0,0,0,.7)}}
+:root[data-theme="dark"]{--bg:#15110c;--desk:#1d1710;--paper:#26201a;--ink:#e6dcc8;--mute:#8f8369;--acc:#d08a6a;--shadow:rgba(0,0,0,.7)}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:radial-gradient(ellipse at center,var(--desk),var(--bg));color:var(--ink);font-family:'EB Garamond',Georgia,'Times New Roman',serif;display:flex;flex-direction:column;align-items:center;overflow:hidden}
+#start{margin:auto;max-width:520px;padding:24px;text-align:center;line-height:1.55;font-size:19px}
+#start h1{font-weight:400;font-size:2em;margin:0 0 .3em}
+#start p{margin:.6em 0;color:var(--mute)}
+#start a{color:var(--acc)}
+.btn,nav button,nav select,.ctl button{font:inherit;background:none;border:1px solid var(--mute);color:var(--ink);padding:6px 16px;border-radius:99px;cursor:pointer;font-size:16px;transition:.25s}
+.btn{display:inline-block;margin:14px 0;border-color:var(--acc);color:var(--acc);font-size:19px;padding:10px 24px}
+.btn:hover,nav button:hover,.ctl button:hover:not(:disabled){background:var(--acc);color:var(--paper)}
+nav{display:flex;gap:8px;margin:10px 8px 6px;flex-wrap:wrap;justify-content:center;max-width:100%}
+nav select{background:var(--paper);max-width:60vw}
+#stage{position:relative;flex:none;filter:drop-shadow(0 18px 24px var(--shadow))}
+#view{position:relative;perspective:1600px;touch-action:pan-y;cursor:grab;-webkit-user-select:none;user-select:none}
+#clip{position:absolute;inset:0;overflow:hidden;background:var(--paper);border-radius:3px 8px 8px 3px;background-image:linear-gradient(90deg,rgba(0,0,0,.12),transparent 4%,transparent 96%,rgba(0,0,0,.06))}
+.flowc{height:100%;column-fill:auto;line-height:1.6;hyphens:none;-webkit-hyphens:none;text-align:left;will-change:transform}
+.nc *{animation:none!important;opacity:1!important}
+.shade{position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(90deg,rgba(0,0,0,.55),rgba(0,0,0,.15) 55%,transparent)}
+#leaf{position:absolute;inset:0;display:none;transform-origin:0 50%;transform-style:preserve-3d;-webkit-transform-style:preserve-3d;will-change:transform}
+.face{position:absolute;inset:0;overflow:hidden;background-color:var(--paper);border-radius:3px 8px 8px 3px;backface-visibility:hidden;-webkit-backface-visibility:hidden}
+.back{transform:rotateY(180deg);background-image:linear-gradient(270deg,rgba(0,0,0,.22),transparent 40%)}
+.fs{position:absolute;inset:0;background:#000;opacity:0;pointer-events:none}
+p{margin:0 0 .6em;text-indent:1.2em}
+h2{break-before:column;margin:.6em 0 1em;text-align:center;font-weight:500;font-size:1.5em;letter-spacing:.08em;color:var(--acc)}
+h2::after{content:"❦";display:block;font-size:.6em;margin-top:.4em;color:var(--mute);letter-spacing:0}
+.cover{break-after:column;height:100%;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center}
+.cover h1{font-weight:400;font-size:2.3em;margin:.4em 0;overflow-wrap:anywhere;opacity:0;animation:rise 1.6s .3s forwards}
+.cover .o{font-size:1.6em;color:var(--acc);opacity:0;animation:fi 1.6s 1s forwards}
+.cover em{color:var(--mute);font-size:.75em;margin-top:2em;opacity:0;animation:fi 1.6s 1.6s forwards}
+@keyframes fi{to{opacity:1}}
+@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
+.ctl{display:flex;align-items:center;gap:12px;margin:10px 0 12px;color:var(--mute);font-size:15px}
+.ctl button{font-size:20px;padding:2px 14px;line-height:1.2}
+.ctl button:disabled{opacity:.25;cursor:default}
+#bar{position:fixed;left:0;top:0;height:3px;background:var(--acc);width:0;transition:width .6s ease}
+</style>
+</head>
+<body>
+<div id="bar"></div>
+<div id="start">
+<h1>Könyvolvasó</h1>
+<p>Nyiss meg egy könyvet a telefonodról vagy gépedről, és lapozhatod, mint egy igazi könyvet. A fájl nem hagyja el az eszközödet.</p>
+<label class="btn">Könyv megnyitása<input id="file" type="file" accept=".epub,.txt,.html,.htm" hidden></label><br><button class="btn" id="pasteBtn" type="button">Szöveg beillesztése</button><div id="pasteBox" hidden><textarea id="ta" rows="6" placeholder="Illeszd be ide a könyv szövegét…" style="width:100%;font:inherit;font-size:16px;background:var(--paper);color:var(--ink);border:1px solid var(--mute);border-radius:8px;padding:8px"></textarea><br><button class="btn" id="go0" type="button">Olvasás</button></div>
+<p>Támogatott: <b>.epub</b>, .txt, .html. Rejtő Jenő regényei szabadon letölthetők a <a href="https://mek.oszk.hu" target="_blank" rel="noopener">Magyar Elektronikus Könyvtárból</a> (mek.oszk.hu), válaszd az EPUB változatot.</p>
+<p id="err" style="color:var(--acc)"></p>
+</div>
+<nav id="nav" hidden><select id="toc" aria-label="Fejezetek"></select><button id="small" aria-label="Kisebb betű">A−</button><button id="big" aria-label="Nagyobb betű">A+</button><button id="other">Másik könyv</button><select id="voice" aria-label="Hang"></select><button id="rate" aria-label="Felolvasási sebesség">1×</button></nav>
+<div id="stage" hidden><div id="view">
+<div id="clip"><div id="flow" class="flowc"></div><div class="shade" id="shade"></div></div>
+<div id="leaf"><div class="face"><div id="lflow" class="flowc nc"></div><div class="fs" id="fsh"></div></div><div class="face back"></div></div>
+</div></div>
+<div class="ctl" id="ctl" hidden><button id="prev" aria-label="Előző oldal">‹</button><span id="pg"></span><button id="next" aria-label="Következő oldal">›</button><button id="play" aria-label="Felolvasás">🎧</button><button id="fsb" aria-label="Teljes képernyő">⛶</button></div>
+<script>
+var $=function(i){return document.getElementById(i)},flow=$('flow'),lflow=$('lflow'),view=$('view'),stage=$('stage'),shade=$('shade'),leaf=$('leaf'),fsh=$('fsh');
+var W=0,H=0,P=0,cur=0,total=1,fs=0,key='',chP=[],loaded=false,busy=false;
+try{fs=parseInt(localStorage.getItem('rd-fs'))||0}catch(e){}
+function esc(s){return s.replace(/\u00AD/g,'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function dec(buf){try{return new TextDecoder('utf-8',{fatal:true}).decode(buf)}catch(e){return new TextDecoder('iso-8859-2').decode(buf)}}
+function fromText(s){
+  s=s.replace(/\r/g,'');
+  var parts=/\n\s*\n/.test(s)?s.split(/\n\s*\n/).map(function(x){return x.replace(/(\p{Ll})-[ \t]*\n\s*(\p{Ll})/gu,'$1$2').replace(/\s*\n\s*/g,' ')}):s.split('\n');
+  var out=[];
+  parts.forEach(function(x){
+    x=x.replace(/\s+/g,' ').trim();if(!x)return;
+    var h=x.length<50&&(/^[IVXLC]+\.?$/.test(x)||/FEJEZET/i.test(x)||(x===x.toUpperCase()&&/[A-ZÁÉÍÓÖŐÚÜŰ]{4}/.test(x)));
+    out.push({k:h?'h':'p',t:x});
+  });
+  return out;
+}
+function fromHTML(s){
+  var d=new DOMParser().parseFromString(s,'text/html'),out=[];
+  d.body.querySelectorAll('h1,h2,h3,h4,p').forEach(function(el){
+    var t=(el.textContent||'').replace(/\s+/g,' ').trim();
+    if(t)out.push({k:/^H/.test(el.tagName)?'h':'p',t:t});
+  });
+  return out.length?out:fromText(d.body.textContent||'');
+}
+async function fromEpub(buf){
+  var z=await JSZip.loadAsync(buf),X=function(s){return new DOMParser().parseFromString(s,'application/xml')};
+  var opfPath=X(await z.file('META-INF/container.xml').async('string')).querySelector('rootfile').getAttribute('full-path');
+  var opf=X(await z.file(opfPath).async('string')),base=opfPath.indexOf('/')>=0?opfPath.slice(0,opfPath.lastIndexOf('/')+1):'',man={};
+  opf.querySelectorAll('manifest > item').forEach(function(i){man[i.getAttribute('id')]=i.getAttribute('href')});
+  var tt=opf.getElementsByTagName('dc:title')[0],items=[],refs=opf.querySelectorAll('spine > itemref');
+  for(var i=0;i<refs.length;i++){
+    var f=z.file(base+decodeURIComponent(man[refs[i].getAttribute('idref')]||''));
+    if(f)items=items.concat(fromHTML(await f.async('string')));
+  }
+  return {title:tt?tt.textContent:'',items:items};
+}
+$('file').onchange=async function(e){
+  var f=e.target.files[0];if(!f)return;$('err').textContent='';
+  try{
+    var buf=await f.arrayBuffer(),r;
+    if(/\.epub$/i.test(f.name))r=await fromEpub(buf);
+    else if(/\.html?$/i.test(f.name))r={title:'',items:fromHTML(dec(buf))};
+    else r={title:'',items:fromText(dec(buf))};
+    if(r.items.length<5)throw new Error('empty');
+    key='rd-'+f.name+f.size;
+    build(r.title||f.name.replace(/\.[^.]+$/,''),r.items);
+  }catch(x){$('err').textContent='Ezt a fájlt nem sikerült megnyitni. Próbáld az EPUB vagy TXT változatot.'}
+  e.target.value='';
+};
+$('pasteBtn').onclick=function(){$('pasteBox').hidden=!$('pasteBox').hidden};
+$('go0').onclick=function(){
+  var t=$('ta').value,it=fromText(t);
+  if(it.length<5){$('err').textContent='Túl rövid a beillesztett szöveg.';return}
+  $('err').textContent='';key='rd-paste'+t.length;build('Beillesztett könyv',it);
+};
+function build(title,items){
+  var h='<div class="cover"><h1>'+esc(title)+'</h1><div class="o">❦</div><em>← húzd át az oldalt a lapozáshoz →</em></div>',n=0,o='<option value="-1">Fejezetek…</option>';
+  items.forEach(function(it){
+    if(it.k==='h'){h+='<h2 id="c'+n+'">'+esc(it.t)+'</h2>';o+='<option value="'+n+'">'+esc(it.t.slice(0,60))+'</option>';n++}
+    else h+='<p>'+esc(it.t)+'</p>';
+  });
+  flow.innerHTML=h;lflow.innerHTML=h.replace(/ id="c\d+"/g,'');
+  $('toc').innerHTML=o;$('toc').hidden=n<2;
+  $('start').hidden=true;$('nav').hidden=false;$('stage').hidden=false;$('ctl').hidden=false;loaded=true;
+  var sv=0;try{sv=parseFloat(localStorage.getItem(key))||0}catch(e){}
+  layout(false,sv);
+}
+function layout(keep,frac){
+  if(!loaded)return;
+  if(keep)frac=total>1?cur/total:0;
+  var full=$('nav').hidden;
+  W=full?window.innerWidth:Math.min(window.innerWidth-16,900);
+  H=Math.max(320,window.innerHeight-(full?60:$('nav').offsetHeight+16)-$('ctl').offsetHeight-30);
+  stage.style.marginTop=full?'60px':'';
+  P=Math.max(18,Math.min(44,W*.07));
+  view.style.width=W+'px';view.style.height=H+'px';
+  var cs='height:'+H+'px;padding:'+P+'px;column-width:'+(W-2*P)+'px;column-gap:'+(2*P)+'px;font-size:'+(Math.max(22,Math.min(30,W/16))+fs)+'px';
+  flow.style.cssText=cs;lflow.style.cssText=cs;
+  total=Math.max(1,Math.ceil((flow.scrollWidth-P)/W-.01));
+  chP=[];flow.querySelectorAll('h2').forEach(function(h){chP.push(Math.floor(h.offsetLeft/W))});
+  busy=false;cur=Math.round((frac||0)*total);
+  go(cur,false);
+}
+function setBase(n){flow.style.transform='translateX('+(-n*W)+'px)'}
+function setLeaf(page,a){
+  leaf.style.display='block';
+  lflow.style.transform='translateX('+(-page*W)+'px)';
+  leaf.style.transform='rotateY('+a+'deg)';
+  var k=Math.abs(a)/180;
+  fsh.style.opacity=Math.min(.4,Math.abs(a)/90*.4);
+  shade.style.opacity=Math.min(.8,Math.sin(k*Math.PI)*.9);
+}
+function hideLeaf(){leaf.style.display='none';shade.style.opacity=0}
+function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+function runLeaf(page,from,to,after){
+  busy=true;var t0=performance.now(),d=Math.max(240,Math.abs(to-from)/180*750);
+  (function step(now){
+    var t=Math.min(1,(now-t0)/d);
+    setLeaf(page,from+(to-from)*ease(t));
+    if(t<1)requestAnimationFrame(step);else{busy=false;after()}
+  })(t0);
+}
+function finish(n){var ch=n!==cur;cur=n;setBase(n);hideLeaf();ui();if(ch&&!selfTurn){if(playing)startTTS();else paused=false}selfTurn=false}
+function go(n,anim){
+  n=Math.max(0,Math.min(total-1,n));
+  if(anim===false||n===cur){busy=false;finish(n);return}
+  if(busy)return;
+  if(n>cur){setBase(n);runLeaf(cur,0,-180,function(){finish(n)})}
+  else{setBase(cur);runLeaf(n,-180,0,function(){finish(n)})}
+}
+function ui(){
+  $('pg').textContent=(cur+1)+' / '+total;
+  $('prev').disabled=cur===0;$('next').disabled=cur===total-1;
+  $('bar').style.width=(total>1?cur/(total-1)*100:0)+'%';
+  var idx=-1;chP.forEach(function(p,i){if(cur>=p)idx=i});$('toc').value=idx;
+  try{localStorage.setItem(key,cur/total)}catch(e){}
+}
+$('toc').onchange=function(){var v=+$('toc').value;if(v>=0)go(chP[v])};
+function sz(d){fs=Math.max(-4,Math.min(12,fs+d));try{localStorage.setItem('rd-fs',fs)}catch(e){}layout(true)}
+$('small').onclick=function(){sz(-2)};$('big').onclick=function(){sz(2)};
+$('other').onclick=function(){stopTTS();loaded=false;$('start').hidden=false;$('nav').hidden=true;$('stage').hidden=true;$('ctl').hidden=true;$('bar').style.width=0};
+$('prev').onclick=function(){go(cur-1)};
+$('next').onclick=function(){go(cur+1)};
+document.addEventListener('keydown',function(e){
+  if(!loaded)return;
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();go(cur+1)}
+  if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(cur-1)}
+});
+var sx=0,dx=0,drag=false,dir=0,lp=0;
+view.addEventListener('pointerdown',function(e){if(busy)return;sx=e.clientX;dx=0;drag=true;dir=0;lp=0;try{view.setPointerCapture(e.pointerId)}catch(x){}});
+view.addEventListener('pointermove',function(e){
+  if(!drag)return;dx=e.clientX-sx;
+  if(!dir){
+    if(Math.abs(dx)<8)return;
+    var d=dx<0?1:-1;
+    if((d===1&&cur>=total-1)||(d===-1&&cur<=0))return;
+    dir=d;setBase(d===1?cur+1:cur);
+  }
+  lp=Math.max(0,Math.min(1,(dir===1?-dx:dx)/(W*.85)));
+  if(dir===1)setLeaf(cur,-180*lp);else setLeaf(cur-1,-180*(1-lp));
+});
+function release(){
+  if(!drag)return;drag=false;if(!dir)return;
+  var d=dir,p=lp,c=p>.25,n=cur;dir=0;
+  if(d===1){if(c)runLeaf(n,-180*p,-180,function(){finish(n+1)});else runLeaf(n,-180*p,0,function(){finish(n)})}
+  else{if(c)runLeaf(n-1,-180*(1-p),0,function(){finish(n-1)});else runLeaf(n-1,-180*(1-p),-180,function(){finish(n)})}
+}
+view.addEventListener('pointerup',release);
+view.addEventListener('pointercancel',release);
+var tts=window.speechSynthesis,playing=false,paused=false,tok=0,mode='p',els=[],ei=0,chunks=[],ci=0,meta=null,rate=1,voice=null,hv=[],selfTurn=false,RATES=[.85,1,1.15,1.3];
+var HF='https://huggingface.co/diffusionstudio/piper-voices/resolve/main/hu_HU/',PH='https://cdn.jsdelivr.net/npm/@diffusionstudio/piper-wasm@1.0.0/build/piper_phonemize',PHJS='https://cdn.jsdelivr.net/npm/@diffusionstudio/vits-web@1.0.3/dist/piper-DeOu3H9E.js',ORT='https://cdn.jsdelivr.net/npm/onnxruntime-web@1.18.0/dist/';
+var pv='anna',eng=null,phm=null,chain=Promise.resolve(),au=null,queue=[],cursor=null,curC=null,curRes=null,SIL='data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YQAAAAA=';
+try{rate=parseFloat(localStorage.getItem('rd-rate'))||1}catch(e){}
+$('rate').textContent=rate+'\u00d7';
+function status(m){$('pg').textContent=m}
+function note(m){status(m);setTimeout(ui,3500)}
+function usePiper(){return $('voice').value!=='d'}
+function loadVoices(){
+  if(tts){
+    hv=tts.getVoices().filter(function(v){return /^hu/i.test(v.lang)});
+    var sc=function(v){return /premium|enhanced|neural|natural|online/i.test(v.name)?2:/google/i.test(v.name)?1:0};
+    hv.sort(function(a,b){return sc(b)-sc(a)});
+  }
+  var sel=$('voice'),sv='anna';try{sv=localStorage.getItem('rd-pv')||'anna'}catch(e){}
+  sel.innerHTML='<option value="anna">Anna (Piper)</option><option value="berta">Berta (Piper)</option><option value="imre">Imre (Piper)</option>'+(hv.length?'<option value="d">Eszk\u00f6z hangja</option>':'');
+  sel.value=sv;if(sel.value!==sv)sel.value='anna';
+  if(sel.value!=='d')pv=sel.value;
+  voice=hv[0]||null;
+}
+loadVoices();if(tts)tts.onvoiceschanged=loadVoices;
+function splitS(t,mn){
+  var s=t.match(/[^.!?\u2026]+[.!?\u2026]*["\u201d\u00bb)]*\s*/g)||[t],out=[],b='';
+  s.forEach(function(x){b+=x;if(b.length>=mn){out.push(b.trim());b=''}});
+  if(b.trim())out.push(b.trim());
+  return out;
+}
+/* ---------- Piper (neur\u00e1lis hang a b\u00f6ng\u00e9sz\u0151ben) ---------- */
+async function cached(url,prog){
+  var c=await caches.open('piper-v1'),r=await c.match(url);
+  if(r)return r.blob();
+  var resp=await fetch(url);if(!resp.ok)throw new Error('HTTP '+resp.status);
+  var tot=+resp.headers.get('Content-Length')||0,rd=resp.body.getReader(),parts=[],got=0;
+  for(;;){var x=await rd.read();if(x.done)break;parts.push(x.value);got+=x.value.length;if(prog)prog(got,tot)}
+  var b=new Blob(parts);try{await c.put(url,new Response(b))}catch(e){}
+  return b;
+}
+async function loadEngine(){
+  if(eng&&eng.name===pv)return eng;
+  if(!window.ort)throw new Error('ort');
+  ort.env.wasm.wasmPaths=ORT;
+  ort.env.wasm.numThreads=self.crossOriginIsolated?Math.min(4,navigator.hardwareConcurrency||1):1;
+  phm=phm||await import(PHJS);
+  var base=HF+pv+'/medium/hu_HU-'+pv+'-medium.onnx';
+  var cfg=JSON.parse(await (await cached(base+'.json')).text());
+  var blob=await cached(base,function(g,t){status('Hang let\u00f6lt\u00e9se '+(t?Math.round(g/t*100)+'%':Math.round(g/1048576)+' MB'))});
+  status('Hang bet\u00f6lt\u00e9se\u2026');
+  var session=await ort.InferenceSession.create(await blob.arrayBuffer(),{executionProviders:['wasm']});
+  eng={name:pv,cfg:cfg,session:session};
+  ui();
+  return eng;
+}
+function phonemize(text,lang){
+  return new Promise(async function(res,rej){
+    var to=setTimeout(function(){rej(new Error('phonemize timeout'))},30000);
+    try{
+      var m=await phm.createPiperPhonemize({
+        print:function(l){clearTimeout(to);try{res(JSON.parse(l).phoneme_ids)}catch(e){rej(e)}},
+        printErr:function(l){console.warn(l)},
+        locateFile:function(l){return l.endsWith('.wasm')?PH+'.wasm':l.endsWith('.data')?PH+'.data':l}
+      });
+      m.callMain(['-l',lang,'--input',JSON.stringify([{text:text}]),'--espeak_data','/espeak-ng-data']);
+    }catch(e){clearTimeout(to);rej(e)}
+  });
+}
+function wavBlob(f,sr){
+  var n=f.length,d=new DataView(new ArrayBuffer(44+n*2));
+  function s(o,t){for(var i=0;i<t.length;i++)d.setUint8(o+i,t.charCodeAt(i))}
+  s(0,'RIFF');d.setUint32(4,36+n*2,true);s(8,'WAVE');s(12,'fmt ');d.setUint32(16,16,true);d.setUint16(20,1,true);d.setUint16(22,1,true);d.setUint32(24,sr,true);d.setUint32(28,sr*2,true);d.setUint16(32,2,true);d.setUint16(34,16,true);s(36,'data');d.setUint32(40,n*2,true);
+  for(var i=0;i<n;i++){var v=Math.max(-1,Math.min(1,f[i]));d.setInt16(44+i*2,v<0?v*32768:v*32767,true)}
+  return new Blob([d],{type:'audio/wav'});
+}
+async function synthInner(text){
+  var e=await loadEngine(),ids=await phonemize(text,e.cfg.espeak.voice),n=ids.length,c=e.cfg;
+  var feeds={
+    input:new ort.Tensor('int64',BigInt64Array.from(ids.map(function(x){return BigInt(x)})),[1,n]),
+    input_lengths:new ort.Tensor('int64',BigInt64Array.from([BigInt(n)]),[1]),
+    scales:new ort.Tensor('float32',Float32Array.from([c.inference.noise_scale,c.inference.length_scale/rate,c.inference.noise_w]),[3])
+  };
+  if(c.speaker_id_map&&Object.keys(c.speaker_id_map).length)feeds.sid=new ort.Tensor('int64',BigInt64Array.from([BigInt(0)]),[1]);
+  var out=await e.session.run(feeds);
+  return wavBlob(out.output.data,c.audio.sample_rate);
+}
+function synth(t){var p=chain.then(function(){return synthInner(t)});chain=p.catch(function(){});return p}
+function mkCursor(){
+  var all=[].slice.call(flow.querySelectorAll('h2,p')),i=0,k=0,ch=[],mt=null,ok=false;
+  var fl0=flow.getBoundingClientRect().left;
+  for(;i<all.length;i++){var r=all[i].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl0)/W)>=cur)break}
+  function load(){
+    while(i<all.length){
+      var el=all[i],r=el.getClientRects(),t=(el.textContent||'').trim(),fl=flow.getBoundingClientRect().left;
+      if(r.length&&t){mt={s:Math.floor((r[0].left-fl)/W),e:Math.floor((r[r.length-1].left-fl)/W)};ch=splitS(t,200);k=0;return true}
+      i++;
+    }
+    return false;
+  }
+  ok=load();
+  return {next:function(){
+    if(!ok)return null;
+    if(k>=ch.length){i++;ok=load();if(!ok)return null}
+    var p=Math.min(mt.e,mt.s+Math.floor(k/ch.length*(mt.e-mt.s+1))),o={t:ch[k],p:p};k++;return o;
+  }};
+}
+function fill(){
+  while(cursor&&queue.length<3){
+    var c=cursor.next();if(!c)break;
+    c.prom=synth(c.t);c.prom.catch(function(){});queue.push(c);
+  }
+}
+function playBlob(blob){
+  return new Promise(function(res){
+    var u=URL.createObjectURL(blob);
+    curRes=function(){au.onended=null;au.onerror=null;curRes=null;URL.revokeObjectURL(u);res()};
+    au.onended=curRes;au.onerror=curRes;au.src=u;
+    var pr=au.play();
+    if(pr&&pr.catch)pr.catch(function(){stopTTS();note('Nyomd meg \u00fajra a \u25b6 gombot');if(curRes)curRes()});
+  });
+}
+async function playLoop(my){
+  while(playing&&my===tok){
+    fill();
+    var c=queue.shift();
+    if(!c){if(my===tok)stopTTS();return}
+    curC=c;
+    $('play').textContent='\u23f3';
+    var wav;
+    try{wav=await c.prom}catch(e){
+      if(my!==tok)return;
+      console.warn(e);stopTTS();
+      if(hv.length){$('voice').value='d';note('A Piper hang nem indult, az eszk\u00f6z hangj\u00e1t haszn\u00e1lom');startTTS()}
+      else note('A Piper hang nem indult el');
+      return;
+    }
+    if(!playing||my!==tok)return;
+    $('play').textContent='\u23f8';ui();
+    fill();
+    if(c.p>cur&&!busy){selfTurn=true;go(c.p)}
+    await playBlob(wav);
+  }
+}
+/* ---------- az eszk\u00f6z saj\u00e1t hangja (tartal\u00e9k) ---------- */
+function loadEl(){
+  while(ei<els.length){
+    var el=els[ei],r=el.getClientRects(),t=(el.textContent||'').trim();
+    if(r.length&&t){
+      var fl=flow.getBoundingClientRect().left;
+      meta={s:Math.floor((r[0].left-fl)/W),e:Math.floor((r[r.length-1].left-fl)/W)};
+      chunks=splitS(t,80);ci=0;return true;
+    }
+    ei++;
+  }
+  return false;
+}
+function startDev(){
+  if(!tts||!hv.length){note('Nincs magyar hang az eszk\u00f6z\u00f6n');return}
+  mode='d';tts.cancel();tok++;
+  els=Array.prototype.slice.call(flow.querySelectorAll('h2,p'));
+  var fl=flow.getBoundingClientRect().left;
+  for(ei=0;ei<els.length;ei++){var r=els[ei].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl)/W)>=cur)break}
+  if(!loadEl()){stopTTS();return}
+  playing=true;$('play').textContent='\u23f8';speakNext();
+}
+function speakNext(){
+  if(!playing)return;
+  if(ci>=chunks.length){ei++;if(!loadEl()){stopTTS();return}}
+  var my=++tok,c=chunks[ci],n=chunks.length;
+  var p=Math.min(meta.e,meta.s+Math.floor(ci/n*(meta.e-meta.s+1)));
+  if(p>cur&&!busy){selfTurn=true;go(p)}
+  var u=new SpeechSynthesisUtterance(c);u.lang=voice?voice.lang:'hu-HU';if(voice)u.voice=voice;u.rate=rate;
+  u.onend=function(){if(my===tok&&playing){ci++;speakNext()}};
+  u.onerror=function(e){if(my===tok&&playing&&e.error!=='interrupted'&&e.error!=='canceled'){ci++;speakNext()}};
+  tts.speak(u);
+}
+/* ---------- k\u00f6z\u00f6s vez\u00e9rl\u00e9s ---------- */
+function startTTS(){
+  if(!loaded)return;
+  stopTTS();
+  if(!usePiper()){startDev();return}
+  mode='p';pv=$('voice').value;
+  cursor=mkCursor();queue=[];playing=true;paused=false;
+  $('play').textContent='\u23f3';
+  playLoop(++tok);
+}
+function stopTTS(){
+  playing=false;paused=false;tok++;
+  if(tts)tts.cancel();
+  if(au)try{au.pause()}catch(e){}
+  if(curRes)curRes();
+  queue=[];cursor=null;curC=null;
+  $('play').textContent='\ud83c\udfa7';
+}
+function unlock(){
+  if(!au)au=new Audio();
+  try{au.src=SIL;var p=au.play();if(p&&p.catch)p.catch(function(){})}catch(e){}
+}
+$('play').onclick=function(){
+  unlock();
+  if(playing){
+    playing=false;paused=true;tok++;$('play').textContent='\u25b6';
+    if(mode==='p'){try{au.pause()}catch(e){}if(curC)queue.unshift(curC);if(curRes)curRes()}
+    else tts.cancel();
+  }else if(paused){
+    paused=false;playing=true;$('play').textContent='\u23f8';
+    if(mode==='p')playLoop(++tok);else speakNext();
+  }else startTTS();
+};
+$('voice').onchange=function(){
+  var v=$('voice').value;
+  try{localStorage.setItem('rd-pv',v)}catch(e){}
+  if(v!=='d')pv=v;
+  if(playing)startTTS();
+};
+$('rate').onclick=function(){rate=RATES[(RATES.indexOf(rate)+1)%RATES.length];$('rate').textContent=rate+'\u00d7';try{localStorage.setItem('rd-rate',rate)}catch(e){}if(playing)startTTS()};
+$('fsb').onclick=function(){var n=$('nav');n.hidden=!n.hidden;try{if(n.hidden)document.documentElement.requestFullscreen();else if(document.fullscreenElement)document.exitFullscreen()}catch(e){}layout(true)};
+window.addEventListener('resize',function(){layout(true)});
+</script>
+</body>
+</html>
