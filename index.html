@@ -363,44 +363,30 @@ function fill(){
   }
 }
 function clearWordMark(){if(wordTimer){clearInterval(wordTimer);wordTimer=null}if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}}
-var wordSearchPage=-1,wordSearchEl=-1,wordSearchNode=null,wordSearchOffset=0;
-function resetWordSearch(page){wordSearchPage=page;wordSearchEl=-1;wordSearchNode=null;wordSearchOffset=0}
+var wordSearchPage=-1,wordSearchEl=-1,wordSearchOffset=0;
+function resetWordSearch(page){wordSearchPage=page;wordSearchEl=-1;wordSearchOffset=0}
+function unwrapWordMark(){if(wordMark){var p=wordMark.parentNode;p.replaceChild(document.createTextNode(wordMark.textContent),wordMark);p.normalize();wordMark=null}}
 function markWord(w,page){
-  if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}
-  if(!w)return;
-  if(wordSearchPage!==page)resetWordSearch(page);
-  var nodes=flow.querySelectorAll('p,h2'),isWord=function(ch){return !!ch&&/[\\p{L}\\p{N}]/u.test(ch)};
-  function searchFrom(el,offsetNode,offset){
-    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node,started=!offsetNode;
+  unwrapWordMark();if(!w)return;
+  var nodes=flow.querySelectorAll('p,h2');if(wordSearchPage!==page)resetWordSearch(page);
+  function findIn(el,start){
+    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node,base=0;
     while(node=walker.nextNode()){
-      if(!started){if(node===offsetNode){started=true}else continue}
-      var text=node.nodeValue,begin=node===offsetNode?offset:0,low=text.toLocaleLowerCase(),needle=w.toLocaleLowerCase(),idx=low.indexOf(needle,begin);
+      var txt=node.nodeValue,begin=Math.max(0,start-base),idx=txt.toLocaleLowerCase().indexOf(w.toLocaleLowerCase(),begin);
       while(idx>=0){
-        var before=idx?text.charAt(idx-1):'',after=text.charAt(idx+w.length)||'';
-        if(!isWord(before)&&!isWord(after)){
+        var before=idx?txt.charAt(idx-1):'',after=txt.charAt(idx+w.length)||'';
+        if(!/[\\p{L}\\p{N}]/u.test(before)&&!/[\\p{L}\\p{N}]/u.test(after)){
           var range=document.createRange();range.setStart(node,idx);range.setEnd(node,idx+w.length);
-          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);
-          wordMark=span;wordSearchNode=node;wordSearchOffset=idx+w.length;return true;
+          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);wordMark=span;wordSearchEl=Array.prototype.indexOf.call(nodes,el);wordSearchOffset=base+idx+w.length;return true;
         }
-        idx=low.indexOf(needle,idx+1)
+        idx=txt.toLocaleLowerCase().indexOf(w.toLocaleLowerCase(),idx+1)
       }
-    }
-    return false;
+      base+=txt.length;
+    }return false;
   }
-  var start=Math.max(0,wordSearchEl);
-  for(var i=start;i<nodes.length;i++){
-    var el=nodes[i],r=el.getBoundingClientRect(),fr=flow.getBoundingClientRect();
-    if(Math.floor((r.left-fr.left)/W)!==page)continue;
-    if(searchFrom(el,i===wordSearchEl?wordSearchNode:null,i===wordSearchEl?wordSearchOffset:0)){
-      wordSearchEl=i;return;
-    }
-  }
-  // Wrap to the beginning if the word sequence begins again on a new narration chunk.
-  for(var j=0;j<Math.min(start,nodes.length);j++){
-    var el2=nodes[j],rr=el2.getBoundingClientRect(),ff=flow.getBoundingClientRect();
-    if(Math.floor((rr.left-ff.left)/W)!==page)continue;
-    if(searchFrom(el2,null,0)){wordSearchEl=j;return}
-  }
+  var first=Math.max(0,wordSearchEl);
+  for(var i=first;i<nodes.length;i++){var r=nodes[i].getBoundingClientRect(),fr=flow.getBoundingClientRect();if(Math.floor((r.left-fr.left)/W)!==page)continue;if(findIn(nodes[i],i===first?wordSearchOffset:0))return}
+  for(var j=0;j<first;j++){var rr=nodes[j].getBoundingClientRect(),ff=flow.getBoundingClientRect();if(Math.floor((rr.left-ff.left)/W)!==page)continue;if(findIn(nodes[j],0))return}
 }
 function playBlob(blob,text){
   return new Promise(async function(res,rej){
