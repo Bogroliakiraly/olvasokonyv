@@ -66,7 +66,7 @@ h2::after{content:"❦";display:block;font-size:.6em;margin-top:.4em;color:var(-
 <div id="start">
 <h1>Könyvolvasó</h1>
 <p>Nyiss meg egy könyvet a telefonodról vagy gépedről, és lapozhatod, mint egy igazi könyvet. A fájl nem hagyja el az eszközödet.</p>
-<label class="btn">Könyv megnyitása<input id="file" type="file" accept=".epub,.txt,.html,.htm" hidden></label><br><button class="btn" id="pasteBtn" type="button">Szöveg beillesztése</button><div id="pasteBox" hidden><textarea id="ta" rows="6" placeholder="Illeszd be ide a könyv szövegét…" style="width:100%;font:inherit;font-size:16px;background:var(--paper);color:var(--ink);border:1px solid var(--mute);border-radius:8px;padding:8px"></textarea><br><button class="btn" id="go0" type="button">Olvasás</button></div>
+<button class="btn" id="openBtn" type="button">Könyv megnyitása</button><input id="file" type="file" accept=".epub,.txt,.html,.htm" hidden><br><button class="btn" id="pasteBtn" type="button">Szöveg beillesztése</button><div id="pasteBox" hidden><textarea id="ta" rows="6" placeholder="Illeszd be ide a könyv szövegét…" style="width:100%;font:inherit;font-size:16px;background:var(--paper);color:var(--ink);border:1px solid var(--mute);border-radius:8px;padding:8px"></textarea><br><button class="btn" id="go0" type="button">Olvasás</button></div>
 <p>Támogatott: <b>.epub</b>, .txt, .html. Rejtő Jenő regényei szabadon letölthetők a <a href="https://mek.oszk.hu" target="_blank" rel="noopener">Magyar Elektronikus Könyvtárból</a> (mek.oszk.hu), válaszd az EPUB változatot.</p>
 <p id="err" style="color:var(--acc)"></p>
 </div>
@@ -113,6 +113,7 @@ async function fromEpub(buf){
   }
   return {title:tt?tt.textContent:'',items:items};
 }
+$('openBtn').onclick=function(){ $('file').click(); };
 $('file').onchange=async function(e){
   var f=e.target.files[0];if(!f)return;$('err').textContent='';
   try{
