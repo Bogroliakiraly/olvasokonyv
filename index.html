@@ -102,16 +102,40 @@ function fromHTML(s){
   return out.length?out:fromText(d.body.textContent||'');
 }
 async function fromEpub(buf){
-  var z=await JSZip.loadAsync(buf),X=function(s){return new DOMParser().parseFromString(s,'application/xml')};
-  var opfPath=X(await z.file('META-INF/container.xml').async('string')).querySelector('rootfile').getAttribute('full-path');
-  var opf=X(await z.file(opfPath).async('string')),base=opfPath.indexOf('/')>=0?opfPath.slice(0,opfPath.lastIndexOf('/')+1):'',man={};
-  opf.querySelectorAll('manifest > item').forEach(function(i){man[i.getAttribute('id')]=i.getAttribute('href')});
-  var tt=opf.getElementsByTagName('dc:title')[0],items=[],refs=opf.querySelectorAll('spine > itemref');
-  for(var i=0;i<refs.length;i++){
-    var f=z.file(base+decodeURIComponent(man[refs[i].getAttribute('idref')]||''));
-    if(f)items=items.concat(fromHTML(await f.async('string')));
+  var z=await JSZip.loadAsync(buf);
+  function xml(s){return new DOMParser().parseFromString(s,'application/xml')}
+  function norm(p){
+    var a=[];
+    p.split('/').forEach(function(x){if(!x||x==='.')return;if(x==='..')a.pop();else a.push(x)});
+    return a.join('/');
   }
-  return {title:tt?tt.textContent:'',items:items};
+  var container=z.file('META-INF/container.xml');
+  if(!container)throw new Error('EPUB container missing');
+  var root=xml(await container.async('string')).getElementsByTagName('rootfile')[0];
+  if(!root)throw new Error('EPUB package path missing');
+  var opfPath=root.getAttribute('full-path'),opfFile=z.file(opfPath);
+  if(!opfFile)throw new Error('EPUB package file missing: '+opfPath);
+  var opf=xml(await opfFile.async('string')),base=opfPath.indexOf('/')>=0?opfPath.slice(0,opfPath.lastIndexOf('/')+1):'',man={};
+  Array.prototype.forEach.call(opf.getElementsByTagName('item'),function(i){
+    var id=i.getAttribute('id'),href=i.getAttribute('href');
+    if(id&&href)man[id]=href;
+  });
+  var titles=opf.getElementsByTagName('title'),title=titles.length?titles[0].textContent:'',items=[],refs=opf.getElementsByTagName('itemref');
+  for(var i=0;i<refs.length;i++){
+    var href=man[refs[i].getAttribute('idref')];
+    if(!href)continue;
+    var path=norm(base+decodeURIComponent(href.split('#')[0])),f=z.file(path);
+    if(!f)continue;
+    var doc=new DOMParser().parseFromString(await f.async('string'),'text/html'),out=[];
+    doc.querySelectorAll('h1,h2,h3,h4,h5,p,blockquote,li').forEach(function(el){
+      if(el.querySelector('p,li,blockquote'))return;
+      var t=(el.textContent||'').replace(/\\s+/g,' ').trim();
+      if(t)out.push({k:/^H[1-5]$/.test(el.tagName)?'h':'p',t:t});
+    });
+    if(!out.length)out=fromText(doc.body?doc.body.textContent:'');
+    items=items.concat(out);
+  }
+  return {title:title,items:items};
 }
 $('openBtn').onclick=function(){ $('file').click(); };
 $('file').onchange=async function(e){
