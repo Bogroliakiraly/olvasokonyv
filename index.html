@@ -363,38 +363,157 @@ function fill(){
   }
 }
 function clearWordMark(){if(wordTimer){clearInterval(wordTimer);wordTimer=null}if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}}
+var wordSearchPage=-1,wordSearchEl=-1,wordSearchNode=null,wordSearchOffset=0;
+function resetWordSearch(page){wordSearchPage=page;wordSearchEl=-1;wordSearchNode=null;wordSearchOffset=0}
 function markWord(w,page){
-  if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}if(!w)return;
-  var nodes=flow.querySelectorAll('p,h2');
-  for(var el of nodes){
-    var r=el.getBoundingClientRect(),fr=flow.getBoundingClientRect();
-    if(Math.floor((r.left-fr.left)/W)!==page)continue;
-    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node;
+  if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}
+  if(!w)return;
+  if(wordSearchPage!==page)resetWordSearch(page);
+  var nodes=flow.querySelectorAll('p,h2'),isWord=function(ch){return !!ch&&/[\\p{L}\\p{N}]/u.test(ch)};
+  function searchFrom(el,offsetNode,offset){
+    var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node,started=!offsetNode;
     while(node=walker.nextNode()){
-      var s=node.nodeValue,idx=s.toLocaleLowerCase().indexOf(w.toLocaleLowerCase());
+      if(!started){if(node===offsetNode){started=true}else continue}
+      var text=node.nodeValue,begin=node===offsetNode?offset:0,low=text.toLocaleLowerCase(),needle=w.toLocaleLowerCase(),idx=low.indexOf(needle,begin);
       while(idx>=0){
-        var before=idx?s.charAt(idx-1):'',after=s.charAt(idx+w.length)||'';
-        var isWord=function(ch){return !!ch&&/[\\p{L}\\p{N}]/u.test(ch)};
+        var before=idx?text.charAt(idx-1):'',after=text.charAt(idx+w.length)||'';
         if(!isWord(before)&&!isWord(after)){
           var range=document.createRange();range.setStart(node,idx);range.setEnd(node,idx+w.length);
-          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);wordMark=span;return;
+          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);
+          wordMark=span;wordSearchNode=node;wordSearchOffset=idx+w.length;return true;
         }
-        idx=s.toLocaleLowerCase().indexOf(w.toLocaleLowerCase(),idx+1);
+        idx=low.indexOf(needle,idx+1)
       }
     }
+    return false;
+  }
+  var start=Math.max(0,wordSearchEl);
+  for(var i=start;i<nodes.length;i++){
+    var el=nodes[i],r=el.getBoundingClientRect(),fr=flow.getBoundingClientRect();
+    if(Math.floor((r.left-fr.left)/W)!==page)continue;
+    if(searchFrom(el,i===wordSearchEl?wordSearchNode:null,i===wordSearchEl?wordSearchOffset:0)){
+      wordSearchEl=i;return;
+    }
+  }
+  // Wrap to the beginning if the word sequence begins again on a new narration chunk.
+  for(var j=0;j<Math.min(start,nodes.length);j++){
+    var el2=nodes[j],rr=el2.getBoundingClientRect(),ff=flow.getBoundingClientRect();
+    if(Math.floor((rr.left-ff.left)/W)!==page)continue;
+    if(searchFrom(el2,null,0)){wordSearchEl=j;return}
   }
 }
-function playBlob(blob){
+function playBlob(blob,text){
   return new Promise(async function(res,rej){
     try{
       if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
       if(audioCtx.state==='suspended')await audioCtx.resume();
       var buf=await audioCtx.decodeAudioData(await blob.arrayBuffer());
-      var src=audioCtx.createBufferSource();src.buffer=buf;src.connect(audioCtx.destination);activeSource=src;
-      src.onended=function(){if(activeSource===src)activeSource=null;res()};src.start(0);
-    }catch(e){activeSource=null;rej(e)}
+      var words=(text||'').match(/[\\p{L}\\p{N}]+(?:[’'\\-][\\p{L}\\p{N}]+)*/gu)||[],duration=buf.duration;
+      var weights=words.map(function(w){var vowel=(w.match(/[aáeéiíoóöőuúüű]/gi)||[]).length;return Math.max(1,w.length*.45+vowel*.9)}),sum=weights.reduce(function(a,b){return a+b},0),ends=[],acc=0;
+      weights.forEach(function(v){acc+=v;ends.push(acc/sum)});
+      var src=audioCtx.createBufferSource();src.buffer=buf;src.connect(audioCtx.destination);activeSource=src;var wi=-1;
+      resetWordSearch(curC?curC.p:cur);
+      function tick(){var pos=Math.max(0,Math.min(1,(audioCtx.currentTime-startAt)/duration)),next=0;while(next<ends.length-1&&pos>ends[next])next++;if(next!==wi&&next>=0){wi=next;markWord(words[wi],curC?curC.p:cur)}}
+      var startAt=audioCtx.currentTime;wordTimer=setInterval(tick,55);tick();
+      src.onended=function(){clearWordMark();if(activeSource===src)activeSource=null;res()};src.start(0);
+    }catch(e){clearWordMark();activeSource=null;rej(e)}
   });
 }
+async function playLoop(my){
+  while(playing&&my===tok){
+    fill();
+    var c=queue.shift();
+    if(!c){if(my===tok)stopTTS();return}
+    curC=c;
+    $('play').textContent='\u23f3';
+    var wav;
+    try{wav=await c.prom}catch(e){
+      if(my!==tok)return;
+      console.warn('Piper TTS error:',e);stopTTS();if(hv.length){$('voice').value='d';voice=hv[0];mode='d';paused=false;note('A Piper nem indult el, átváltok a telefon hangjára.');startDev()}else note('Piper hiba: '+(e&&e.message?e.message:'nem sikerült betölteni'));return;
+    }
+    if(!playing||my!==tok)return;
+    $('play').textContent='\u23f8';ui();
+    fill();
+    await playBlob(wav,c.t);
+    if(playing&&my===tok&&c.p>cur&&!busy){selfTurn=true;go(c.p)}
+  }
+}
+/* ---------- az eszk\u00f6z saj\u00e1t hangja (tartal\u00e9k) ---------- */
+function loadEl(){
+  while(ei<els.length){
+    var el=els[ei],r=el.getClientRects(),t=(el.textContent||'').trim();
+    if(r.length&&t){
+      var fl=flow.getBoundingClientRect().left;
+      meta={s:Math.floor((r[0].left-fl)/W),e:Math.floor((r[r.length-1].left-fl)/W)};
+      chunks=splitS(t,80);ci=0;return true;
+    }
+    ei++;
+  }
+  return false;
+}
+function startDev(){
+  if(!tts||!hv.length){note('Nincs magyar hang az eszk\u00f6z\u00f6n');return}
+  mode='d';tts.cancel();tok++;
+  els=Array.prototype.slice.call(flow.querySelectorAll('h2,p'));
+  var fl=flow.getBoundingClientRect().left;
+  for(ei=0;ei<els.length;ei++){var r=els[ei].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl)/W)>=cur)break}
+  if(!loadEl()){stopTTS();return}
+  playing=true;$('play').textContent='\u23f8';speakNext();
+}
+function speakNext(){
+  if(!playing)return;
+  if(ci>=chunks.length){ei++;if(!loadEl()){stopTTS();return}}
+  var my=++tok,c=chunks[ci],n=chunks.length;
+  var p=Math.min(meta.e,meta.s+Math.floor(ci/n*(meta.e-meta.s+1)));
+  if(p>cur&&!busy){selfTurn=true;go(p)}
+  var u=new SpeechSynthesisUtterance(c);u.lang=voice?voice.lang:'hu-HU';if(voice)u.voice=voice;u.rate=rate;
+  u.onend=function(){if(my===tok&&playing){ci++;speakNext()}};
+  u.onerror=function(e){if(my===tok&&playing&&e.error!=='interrupted'&&e.error!=='canceled'){ci++;speakNext()}};
+  tts.speak(u);
+}
+/* ---------- k\u00f6z\u00f6s vez\u00e9rl\u00e9s ---------- */
+function startTTS(){
+  if(!loaded)return;
+  stopTTS();
+  if(!usePiper()){startDev();return}
+  mode='p';pv=$('voice').value;
+  cursor=mkCursor();queue=[];playing=true;paused=false;
+  $('play').textContent='\u23f3';
+  playLoop(++tok);
+}
+function stopTTS(){
+  playing=false;paused=false;tok++;
+  if(tts)tts.cancel();
+  if(activeSource)try{activeSource.stop()}catch(e){}activeSource=null;clearWordMark();  if(curRes)curRes();
+  queue=[];cursor=null;curC=null;
+  $('play').textContent='\ud83c\udfa7';
+}
+function unlock(){
+  try{if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();if(audioCtx.state==='suspended')audioCtx.resume()}catch(e){note('A böngésző nem engedélyezte a hangot')}
+}
+$('play').onclick=function(){
+  unlock();
+  if(playing){
+    playing=false;paused=true;tok++;$('play').textContent='\u25b6';
+    if(mode==='p'){if(activeSource)try{activeSource.stop()}catch(e){}activeSource=null;if(curC)queue.unshift(curC);if(curRes)curRes()}
+    else tts.cancel();
+  }else if(paused){
+    paused=false;playing=true;$('play').textContent='\u23f8';
+    if(mode==='p')playLoop(++tok);else speakNext();
+  }else startTTS();
+};
+$('voice').onchange=function(){
+  var v=$('voice').value;
+  try{localStorage.setItem('rd-pv',v)}catch(e){}
+  if(v!=='d')pv=v;
+  if(playing)startTTS();
+};
+$('rate').onclick=function(){rate=RATES[(RATES.indexOf(rate)+1)%RATES.length];$('rate').textContent=rate+'\u00d7';try{localStorage.setItem('rd-rate',rate)}catch(e){}if(playing)startTTS()};
+$('fsb').onclick=function(){var n=$('nav');n.hidden=!n.hidden;try{if(n.hidden)document.documentElement.requestFullscreen();else if(document.fullscreenElement)document.exitFullscreen()}catch(e){}layout(true)};
+window.addEventListener('resize',function(){layout(true)});
+</script>
+</body>
+</html>
 function playBlob(blob,text){
   return new Promise(async function(res,rej){
     try{
