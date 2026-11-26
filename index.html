@@ -337,16 +337,27 @@ function fill(){
 }
 function clearWordMark(){if(wordTimer){clearInterval(wordTimer);wordTimer=null}if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}}
 function markWord(w,page){
-  clearWordMark();
-  if(!w)return;
+  clearWordMark();if(!w)return;
   var nodes=flow.querySelectorAll('p,h2');
   for(var el of nodes){
     var r=el.getBoundingClientRect(),fr=flow.getBoundingClientRect();
-    var col=Math.floor((r.left-fr.left)/W);
-    if(col!==page)continue;
+    if(Math.floor((r.left-fr.left)/W)!==page)continue;
     var walker=document.createTreeWalker(el,NodeFilter.SHOW_TEXT),node;
     while(node=walker.nextNode()){
-      var re=new RegExp('(^|[^\\p{L}\\p{N}])('+w.replace(/[.*+?^{}()|[\\]\\\\]/g,'\\\\function playBlob(blob){
+      var s=node.nodeValue,idx=s.toLocaleLowerCase().indexOf(w.toLocaleLowerCase());
+      while(idx>=0){
+        var before=idx?s.charAt(idx-1):'',after=s.charAt(idx+w.length)||'';
+        var isWord=function(ch){return !!ch&&/[\\p{L}\\p{N}]/u.test(ch)};
+        if(!isWord(before)&&!isWord(after)){
+          var range=document.createRange();range.setStart(node,idx);range.setEnd(node,idx+w.length);
+          var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);wordMark=span;return;
+        }
+        idx=s.toLocaleLowerCase().indexOf(w.toLocaleLowerCase(),idx+1);
+      }
+    }
+  }
+}
+function playBlob(blob){
   return new Promise(async function(res,rej){
     try{
       if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
