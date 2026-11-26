@@ -392,13 +392,7 @@ function playBlob(blob){
       src.onended=function(){if(activeSource===src)activeSource=null;res()};src.start(0);
     }catch(e){activeSource=null;rej(e)}
   });
-}')+')(?=$|[^\\p{L}\\p{N}])','iu');
-      var m=re.exec(node.nodeValue);if(!m)continue;
-      var start=m.index+m[1].length,range=document.createRange();range.setStart(node,start);range.setEnd(node,start+m[2].length);
-      var span=document.createElement('span');span.className='spoken-word';range.surroundContents(span);wordMark=span;return;
-    }
-  }
-}
+}'
 function playBlob(blob,text){
   return new Promise(async function(res,rej){
     try{
