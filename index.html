@@ -299,8 +299,8 @@ async function loadEngine(){
   var base=HF+pv+'/medium/hu_HU-'+pv+'-medium.onnx';
   var cfg=JSON.parse(await (await cached(base+'.json')).text());
   var blob=await cached(base,function(g,t){status('Hang let\u00f6lt\u00e9se '+(t?Math.round(g/t*100)+'%':Math.round(g/1048576)+' MB'))});
-  status('Hang bet\u00f6lt\u00e9se\u2026');
-  var session=await ort.InferenceSession.create(await blob.arrayBuffer(),{executionProviders:['wasm']});
+  status('Hangmodell inicializálása (iPhone-on ez eltarthat)…');
+  var session=await Promise.race([ort.InferenceSession.create(await blob.arrayBuffer(),{executionProviders:['wasm'],graphOptimizationLevel:'basic'}),new Promise(function(_,rej){setTimeout(function(){rej(new Error('A hangmodell inicializálása 90 másodperc után sem fejeződött be.'))},90000)})]);
   eng={name:pv,cfg:cfg,session:session};
   ui();
   return eng;
@@ -420,7 +420,7 @@ async function playLoop(my){
     var wav;
     try{wav=await c.prom}catch(e){
       if(my!==tok)return;
-      console.warn('Piper TTS error:',e);stopTTS();note('Piper hiba: '+(e&&e.message?e.message:'nem sikerült betölteni'));return;
+      console.warn('Piper TTS error:',e);stopTTS();if(hv.length){$('voice').value='d';voice=hv[0];mode='d';paused=false;note('A Piper nem indult el, átváltok a telefon hangjára.');startDev()}else note('Piper hiba: '+(e&&e.message?e.message:'nem sikerült betölteni'));return;
     }
     if(!playing||my!==tok)return;
     $('play').textContent='\u23f8';ui();
