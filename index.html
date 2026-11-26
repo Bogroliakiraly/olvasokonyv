@@ -340,10 +340,11 @@ function synth(t){var p=chain.then(function(){return synthInner(t)});chain=p.cat
 function mkCursor(){
   var all=[].slice.call(flow.querySelectorAll('h2,p')),i=0,k=0,ch=[],mt=null,ok=false;
   var fl0=flow.getBoundingClientRect().left;
-  for(;i<all.length;i++){var r=all[i].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl0)/W)>=cur)break}
+  if(clickStartEl){i=all.indexOf(clickStartEl);if(i<0)i=0}else for(;i<all.length;i++){var r=all[i].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl0)/W)>=cur)break}
   function load(){
     while(i<all.length){
       var el=all[i],r=el.getClientRects(),t=(el.textContent||'').trim(),fl=flow.getBoundingClientRect().left;
+      if(i===clickStartIndex&&clickStartEl===el)t=t.slice(clickStartOffset).trim();
       if(r.length&&t){mt={s:Math.floor((r[0].left-fl)/W),e:Math.floor((r[r.length-1].left-fl)/W)};ch=splitS(t,200);k=0;return true}
       i++;
     }
@@ -428,6 +429,7 @@ async function playLoop(my){
 function loadEl(){
   while(ei<els.length){
     var el=els[ei],r=el.getClientRects(),t=(el.textContent||'').trim();
+    if(ei===clickStartIndex&&clickStartEl===el)t=t.slice(clickStartOffset).trim();
     if(r.length&&t){
       var fl=flow.getBoundingClientRect().left;
       meta={s:Math.floor((r[0].left-fl)/W),e:Math.floor((r[r.length-1].left-fl)/W)};
@@ -442,7 +444,7 @@ function startDev(){
   mode='d';tts.cancel();tok++;
   els=Array.prototype.slice.call(flow.querySelectorAll('h2,p'));
   var fl=flow.getBoundingClientRect().left;
-  for(ei=0;ei<els.length;ei++){var r=els[ei].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl)/W)>=cur)break}
+  if(clickStartEl){ei=els.indexOf(clickStartEl);if(ei<0)ei=0}else for(ei=0;ei<els.length;ei++){var r=els[ei].getClientRects();if(r.length&&Math.floor((r[r.length-1].left-fl)/W)>=cur)break}
   if(!loadEl()){stopTTS();return}
   playing=true;$('play').textContent='\u23f8';speakNext();
 }
@@ -458,6 +460,8 @@ function speakNext(){
   tts.speak(u);
 }
 /* ---------- k\u00f6z\u00f6s vez\u00e9rl\u00e9s ---------- */
+var clickStartEl=null,clickStartIndex=-1,clickStartOffset=0;
+flow.addEventListener('click',function(e){if(!loaded||playing)return;var target=e.target.closest('p,h2');if(!target)return;var range=document.caretRangeFromPoint?document.caretRangeFromPoint(e.clientX,e.clientY):null;if(!range||!target.contains(range.startContainer))return;var tn=range.startContainer,off=range.startOffset;if(tn.nodeType!==3)return;var text=tn.nodeValue,lo=off,hi=off;while(lo>0&&/[\\p{L}\\p{N}]/u.test(text.charAt(lo-1)))lo--;while(hi<text.length&&/[\\p{L}\\p{N}]/u.test(text.charAt(hi)))hi++;if(lo===hi)return;var w=text.slice(lo,hi),walk=document.createTreeWalker(target,NodeFilter.SHOW_TEXT),n,pos=0,absolute=0;while(n=walk.nextNode()){if(n===tn){absolute=pos+lo;break}pos+=n.nodeValue.length}clickStartEl=target;clickStartIndex=Array.prototype.indexOf.call(flow.querySelectorAll('h2,p'),target);clickStartOffset=absolute;var rect=target.getBoundingClientRect(),fr=flow.getBoundingClientRect(),pg=Math.floor((rect.left-fr.left)/W);if(pg!==cur)go(pg);resetWordSearch(pg);startTTS();});
 function startTTS(){
   if(!loaded)return;
   stopTTS();
