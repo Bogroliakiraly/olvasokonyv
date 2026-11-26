@@ -337,7 +337,7 @@ function fill(){
 }
 function clearWordMark(){if(wordTimer){clearInterval(wordTimer);wordTimer=null}if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}}
 function markWord(w,page){
-  clearWordMark();if(!w)return;
+  if(wordMark){wordMark.classList.remove('spoken-word');wordMark=null}if(!w)return;
   var nodes=flow.querySelectorAll('p,h2');
   for(var el of nodes){
     var r=el.getBoundingClientRect(),fr=flow.getBoundingClientRect();
